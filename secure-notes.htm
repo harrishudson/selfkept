@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureNotes</title>
+<style>
+  :root {
+    --bg: #0c0a0f;
+    --surface: #141118;
+    --surface2: #1e1a26;
+    --border: #2e2a40;
+    --accent: #b388ff;
+    --accent2: #7c4dff;
+    --danger: #ff4466;
+    --text: #d4c8e0;
+    --text-dim: #6a5a7a;
+    --text-bright: #f0eeff;
+    --font-mono: 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  header {
+    width: 100%;
+    max-width: 780px;
+    padding: 2rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+  }
+
+  .logo { font-size: 1.5rem; font-weight: bold; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; }
+  .logo span { color: var(--accent2); }
+  .tagline { font-size: 0.7rem; color: var(--text-dim); letter-spacing: 0.1em; }
+  .ver-tag { font-size: 0.7rem; color: var(--accent); opacity: 0.7; }
+  .status-dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); box-shadow: 0 0 6px var(--text-dim); transition: all 0.3s; }
+  .status-dot.active { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 2s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  main { width: 100%; max-width: 780px; padding: 2rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .panel-header {
+    padding: 0.6rem 1rem;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .panel-header::before { content: '▶'; color: var(--accent); font-size: 0.5rem; }
+  .panel-body { padding: 1.2rem; }
+
+  label { display: block; font-size: 0.65rem; letter-spacing: 0.15em; color: var(--text-dim); margin-bottom: 0.4rem; text-transform: uppercase; }
+
+  input[type="text"], input[type="password"], textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.6rem 0.8rem;
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(179,136,255,0.12); }
+  textarea { resize: vertical; min-height: 90px; }
+
+  .passphrase-wrap { position: relative; }
+  .passphrase-wrap input { padding-right: 3rem; }
+  .toggle-vis { position: absolute; right: 0.8rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.8rem; padding: 0; }
+  .toggle-vis:hover { color: var(--accent); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.55rem 1.2rem;
+    border: 1px solid; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 0.75rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s; background: transparent;
+  }
+  .btn-primary { border-color: var(--accent); color: var(--accent); }
+  .btn-primary:hover { background: var(--accent); color: var(--bg); box-shadow: 0 0 20px rgba(179,136,255,0.3); }
+  .btn-secondary { border-color: var(--accent2); color: var(--accent2); }
+  .btn-secondary:hover { background: var(--accent2); color: var(--bg); box-shadow: 0 0 20px rgba(124,77,255,0.3); }
+  .btn-danger { border-color: var(--danger); color: var(--danger); font-size: 0.65rem; padding: 0.3rem 0.6rem; }
+  .btn-danger:hover { background: var(--danger); color: var(--bg); }
+  .btn-wide { padding: 0.55rem 0.8rem; font-size: 0.65rem; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .btn-group { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+
+  .feedback {
+    padding: 0.6rem 0.9rem; border-radius: 3px; font-size: 0.75rem;
+    margin-top: 0.75rem; display: none;
+  }
+  .feedback.ok { background: rgba(179,136,255,0.1); border: 1px solid rgba(179,136,255,0.3); color: var(--accent); }
+  .feedback.err { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: var(--danger); }
+
+  .auth-hint { margin-top: 0.5rem; font-size: 0.65rem; color: var(--text-dim); }
+
+  #records-section, #entry-section, #download-section { display: none; }
+
+  .count-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent); color: var(--bg);
+    font-size: 0.65rem; font-weight: bold;
+    padding: 0.15rem 0.5rem; border-radius: 10px; margin-left: 0.5rem;
+  }
+
+  /* Notes list */
+  .notes-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .note-row {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0.65rem 0.8rem;
+    transition: border-color 0.2s;
+  }
+  .note-row:hover { border-color: rgba(179,136,255,0.3); }
+
+  .note-index { color: var(--text-dim); font-size: 0.65rem; min-width: 1.5rem; padding-top: 0.1rem; flex-shrink: 0; }
+
+  .note-body { flex: 1; }
+  .note-text { color: var(--text-bright); font-size: 0.85rem; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+  .note-time { color: var(--text-dim); font-size: 0.65rem; margin-top: 0.25rem; }
+
+  .note-actions { flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 2rem; color: var(--text-dim); font-size: 0.75rem; letter-spacing: 0.1em; }
+
+  /* Export sub-panels */
+  .export-sub {
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 0.9rem; margin-bottom: 0.9rem;
+  }
+  .export-sub-label {
+    font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 0.4rem;
+  }
+  .export-sub p { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.75rem; line-height: 1.6; }
+  .export-sub-danger { border-color: rgba(255,68,102,0.25); }
+  .export-sub-danger .export-sub-label { color: var(--danger); opacity: 0.8; }
+
+  .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; font-size: 0.75rem; margin-bottom: 1rem; }
+  .info-key { color: var(--text-dim); }
+  .info-val { color: var(--text-bright); }
+
+  .reset-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; }
+  .reset-row .col { flex: 1; min-width: 180px; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+  .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+  footer { margin-top: auto; padding: 1.5rem; text-align: center; font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.1em; border-top: 1px solid var(--border); width: 100%; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Secure<span>Notes</span></div>
+  <div class="tagline">// encrypted text journal</div>
+  <div class="ver-tag" id="version-display"></div>
+  <div class="status-dot" id="status-dot"></div>
+</header>
+
+<main>
+
+  <!-- AUTH -->
+  <div class="panel" id="auth-section">
+    <div class="panel-header">Authentication</div>
+    <div class="panel-body">
+      <label for="passphrase">Passphrase</label>
+      <div class="passphrase-wrap">
+        <input type="password" id="passphrase" placeholder="Enter passphrase to unlock…" autocomplete="off" />
+        <button class="toggle-vis" onclick="toggleVis()" title="Toggle visibility">👁</button>
+      </div>
+      <div class="auth-hint" id="auth-hint"></div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="unlock()">&#9654; Unlock</button>
+      </div>
+      <div class="feedback" id="auth-feedback"></div>
+    </div>
+  </div>
+
+  <!-- RECORDS -->
+  <div class="panel fade-in" id="records-section">
+    <div class="panel-header">
+      Stored Notes
+      <span class="count-badge" id="record-count">0</span>
+    </div>
+    <div class="panel-body">
+      <div class="empty-state" id="empty-state">[ no notes yet — add the first entry below ]</div>
+      <div class="notes-list" id="notes-list"></div>
+    </div>
+  </div>
+
+  <!-- NEW ENTRY -->
+  <div class="panel fade-in" id="entry-section">
+    <div class="panel-header">New Note</div>
+    <div class="panel-body">
+      <label for="note-text">Note</label>
+      <textarea id="note-text" placeholder="Enter your note…"></textarea>
+      <div style="margin-top:0.75rem">
+        <label for="entry-time">Timestamp</label>
+        <input type="text" id="entry-time" readonly style="color:var(--text-dim)" />
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="addEntry()">&#43; Add Note</button>
+        <button class="btn btn-secondary" onclick="clearForm()">&#10005; Clear</button>
+      </div>
+      <div class="feedback" id="entry-feedback"></div>
+    </div>
+  </div>
+
+  <!-- DOWNLOAD / RESET -->
+  <div class="panel fade-in" id="download-section">
+    <div class="panel-header">Export &amp; Reset</div>
+    <div class="panel-body">
+
+      <div class="info-grid" id="export-info"></div>
+
+      <div class="export-sub">
+        <div class="export-sub-label">&#9632; Encrypted Clone</div>
+        <p>Downloads a copy of this file with all current notes encrypted under your passphrase.</p>
+        <button class="btn btn-primary" onclick="downloadClone()">&#8659; Download Encrypted Clone</button>
+      </div>
+
+      <div class="export-sub">
+        <div class="export-sub-label">&#9632; Fresh Clone</div>
+        <p>Downloads a blank copy with no notes and no passphrase — ready to start a brand new journal.</p>
+        <button class="btn btn-secondary" onclick="downloadFreshClone()">&#8659; Download Fresh (Empty) Clone</button>
+      </div>
+
+      <div class="export-sub export-sub-danger">
+        <div class="export-sub-label">&#9632; Reset This Journal</div>
+        <p>Clears all notes from memory and optionally changes the passphrase. Download a Fresh Clone afterward to save the blank state.</p>
+        <div class="reset-row">
+          <div class="col">
+            <label for="new-passphrase">New passphrase <span style="color:var(--text-dim)">(leave blank to keep current)</span></label>
+            <input type="password" id="new-passphrase" placeholder="optional new passphrase…" autocomplete="off" />
+          </div>
+          <button class="btn btn-danger btn-wide" onclick="resetJournal()">&#9888; Wipe &amp; Reset</button>
+        </div>
+      </div>
+
+      <div class="feedback" id="dl-feedback"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>SecureNotes &nbsp;|&nbsp; AES-GCM 256-bit &nbsp;|&nbsp; PBKDF2 &nbsp;|&nbsp; No external dependencies &nbsp;|&nbsp; Standalone &nbsp;|&nbsp; <span id="footer-version"></span></footer>
+
+<script>
+// Capture pristine source IMMEDIATELY — before any DOM mutations.
+const PRISTINE_SOURCE = document.documentElement.outerHTML;
+
+// ============================================================
+//  EMBEDDED ENCRYPTED DATA  (replaced on clone export)
+// ============================================================
+const EMBEDDED_DATA = "__EMBEDDED_DATA__";
+const FILE_VERSION  = "__FILE_VERSION__";
+// ============================================================
+
+// ---------- Crypto (pure-JS — works on iOS file:// URLs) ----------
+// AES-256-GCM + PBKDF2-SHA256. No Web Crypto API required.
+// Pure-JS AES-256-GCM + PBKDF2-SHA256 — no Web Crypto API required.
+// Verified against Node.js built-in crypto. Works on iOS file:// URLs.
+
+function sha256(data){const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];const rotr=(x,n)=>(x>>>n)|(x<<(32-n));const len=data.length,padLen=Math.ceil((len+9)/64)*64,p=new Uint8Array(padLen);p.set(data);p[len]=0x80;const v=new DataView(p.buffer);v.setUint32(padLen-4,(len*8)>>>0,false);v.setUint32(padLen-8,Math.floor(len/0x20000000),false);let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];for(let i=0;i<padLen;i+=64){const w=[];for(let j=0;j<16;j++)w[j]=v.getUint32(i+j*4,false);for(let j=16;j<64;j++){const s0=rotr(w[j-15],7)^rotr(w[j-15],18)^(w[j-15]>>>3),s1=rotr(w[j-2],17)^rotr(w[j-2],19)^(w[j-2]>>>10);w[j]=(w[j-16]+s0+w[j-7]+s1)>>>0;}let[a,b,c,d,e,f,g,h]=[...H];for(let j=0;j<64;j++){const S1=rotr(e,6)^rotr(e,11)^rotr(e,25),ch=(e&f)^((~e)&g),t1=(h+S1+ch+K[j]+w[j])|0,S0=rotr(a,2)^rotr(a,13)^rotr(a,22),maj=(a&b)^(a&c)^(b&c),t2=(S0+maj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}H=H.map((x,i)=>(x+[a,b,c,d,e,f,g,h][i])>>>0);}const out=new Uint8Array(32),ov=new DataView(out.buffer);H.forEach((v,i)=>ov.setUint32(i*4,v,false));return out;}
+
+function hmacSha256(key,data){const BS=64;if(key.length>BS)key=sha256(key);const kp=new Uint8Array(BS);kp.set(key);const ip=new Uint8Array(BS),op=new Uint8Array(BS);for(let i=0;i<BS;i++){ip[i]=kp[i]^0x36;op[i]=kp[i]^0x5c;}const inner=new Uint8Array(BS+data.length);inner.set(ip);inner.set(data,BS);const outer=new Uint8Array(BS+32);outer.set(op);outer.set(sha256(inner),BS);return sha256(outer);}
+
+function pbkdf2(pw,salt,iters,keyLen){const p=typeof pw==='string'?new TextEncoder().encode(pw):pw;const blocks=Math.ceil(keyLen/32),out=new Uint8Array(blocks*32);for(let b=1;b<=blocks;b++){const ib=new Uint8Array(salt.length+4);ib.set(salt);new DataView(ib.buffer).setUint32(salt.length,b,false);let u=hmacSha256(p,ib);const f=new Uint8Array(u);for(let i=1;i<iters;i++){u=hmacSha256(p,u);for(let j=0;j<32;j++)f[j]^=u[j];}out.set(f,(b-1)*32);}return out.slice(0,keyLen);}
+
+const SBOX=[0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16];
+const RCON=[0,1,2,4,8,16,32,64,128,27,54];
+function gmul(a,b){let p=0;for(let i=0;i<8;i++){if(b&1)p^=a;const h=a&0x80;a=(a<<1)&0xff;if(h)a^=0x1b;b>>=1;}return p;}
+function expandKey(key){const Nk=8,Nr=14,Nb=4,w=new Uint32Array(Nb*(Nr+1));for(let i=0;i<Nk;i++)w[i]=(key[4*i]<<24)|(key[4*i+1]<<16)|(key[4*i+2]<<8)|key[4*i+3];for(let i=Nk;i<Nb*(Nr+1);i++){let t=w[i-1];if(i%Nk===0){t=((t<<8)|(t>>>24))>>>0;t=((SBOX[t>>>24]<<24)|(SBOX[(t>>>16)&0xff]<<16)|(SBOX[(t>>>8)&0xff]<<8)|SBOX[t&0xff])>>>0;t^=(RCON[i/Nk]<<24);}else if(i%Nk===4){t=((SBOX[t>>>24]<<24)|(SBOX[(t>>>16)&0xff]<<16)|(SBOX[(t>>>8)&0xff]<<8)|SBOX[t&0xff])>>>0;}w[i]=(w[i-Nk]^t)>>>0;}return w;}
+function aesBlock(block,rk){const s=new Uint8Array(16);s.set(block);const Nr=14;function ark(r){for(let c=0;c<4;c++){const k=rk[r*4+c];s[4*c]^=(k>>>24)&0xff;s[4*c+1]^=(k>>>16)&0xff;s[4*c+2]^=(k>>>8)&0xff;s[4*c+3]^=k&0xff;}}ark(0);for(let r=1;r<=Nr;r++){for(let i=0;i<16;i++)s[i]=SBOX[s[i]];let t=s[1];s[1]=s[5];s[5]=s[9];s[9]=s[13];s[13]=t;t=s[2];s[2]=s[10];s[10]=t;t=s[6];s[6]=s[14];s[14]=t;t=s[3];s[3]=s[15];s[15]=s[11];s[11]=s[7];s[7]=t;if(r<Nr){for(let c=0;c<4;c++){const[a,b,cc,d]=[s[4*c],s[4*c+1],s[4*c+2],s[4*c+3]];s[4*c]=gmul(2,a)^gmul(3,b)^cc^d;s[4*c+1]=a^gmul(2,b)^gmul(3,cc)^d;s[4*c+2]=a^b^gmul(2,cc)^gmul(3,d);s[4*c+3]=gmul(3,a)^b^cc^gmul(2,d);}}ark(r);}return s;}
+function gcmCtr(rk,iv12,data,startCtr){const out=new Uint8Array(data.length),ctr=new Uint8Array(16);ctr.set(iv12);const dv=new DataView(ctr.buffer);dv.setUint32(12,startCtr,false);for(let i=0;i<data.length;i+=16){const ks=aesBlock(ctr,rk);const n=Math.min(16,data.length-i);for(let j=0;j<n;j++)out[i+j]=data[i+j]^ks[j];dv.setUint32(12,dv.getUint32(12,false)+1,false);}return out;}
+function ghash(H,data){function gfm(x,y){const R=new Uint8Array(16);let v=new Uint8Array(y);for(let i=0;i<16;i++){for(let b=7;b>=0;b--){if((x[i]>>b)&1)for(let k=0;k<16;k++)R[k]^=v[k];const lsb=v[15]&1;for(let k=15;k>0;k--)v[k]=(v[k]>>>1)|((v[k-1]&1)<<7);v[0]>>>=1;if(lsb)v[0]^=0xe1;}}return R;}const padLen=Math.ceil(data.length/16)*16,padded=new Uint8Array(padLen);padded.set(data);let x=new Uint8Array(16);for(let i=0;i<padLen;i+=16){const bl=padded.slice(i,i+16);for(let j=0;j<16;j++)x[j]^=bl[j];x=gfm(x,H);}return x;}
+function aesGcmEncrypt(key,iv,pt){const rk=expandKey(key),H=aesBlock(new Uint8Array(16),rk),ct=gcmCtr(rk,iv,pt,2);const ctPad=new Uint8Array(Math.ceil(ct.length/16)*16);ctPad.set(ct);const lb=new Uint8Array(16),lv=new DataView(lb.buffer);lv.setBigUint64(0,0n,false);lv.setBigUint64(8,BigInt(ct.length*8),false);const gi=new Uint8Array(ctPad.length+16);gi.set(ctPad);gi.set(lb,ctPad.length);const S=ghash(H,gi);const Y0=new Uint8Array(16);Y0.set(iv);new DataView(Y0.buffer).setUint32(12,1,false);const EY0=aesBlock(Y0,rk),tag=new Uint8Array(16);for(let i=0;i<16;i++)tag[i]=EY0[i]^S[i];return{ct,tag};}
+function aesGcmDecrypt(key,iv,ct,tag){const rk=expandKey(key),H=aesBlock(new Uint8Array(16),rk);const ctPad=new Uint8Array(Math.ceil(ct.length/16)*16);ctPad.set(ct);const lb=new Uint8Array(16),lv=new DataView(lb.buffer);lv.setBigUint64(0,0n,false);lv.setBigUint64(8,BigInt(ct.length*8),false);const gi=new Uint8Array(ctPad.length+16);gi.set(ctPad);gi.set(lb,ctPad.length);const S=ghash(H,gi);const Y0=new Uint8Array(16);Y0.set(iv);new DataView(Y0.buffer).setUint32(12,1,false);const EY0=aesBlock(Y0,rk),ct2=new Uint8Array(16);for(let i=0;i<16;i++)ct2[i]=EY0[i]^S[i];let ok=true;for(let i=0;i<16;i++)if(tag[i]!==ct2[i]){ok=false;break;}if(!ok)throw new Error('Authentication failed');return gcmCtr(rk,iv,ct,2);}
+
+// High-level: packed format salt(16)+iv(12)+tag(16)+ciphertext -> base64
+// encrypt/decrypt are synchronous (PBKDF2 is CPU-bound, ~1-2s on mobile at 100k iters)
+function securEncrypt(plaintext, passphrase) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = pbkdf2(passphrase, salt, 100000, 32);
+  const pt   = new TextEncoder().encode(plaintext);
+  const {ct, tag} = aesGcmEncrypt(key, iv, pt);
+  const out = new Uint8Array(16+12+16+ct.length);
+  out.set(salt,0); out.set(iv,16); out.set(tag,28); out.set(ct,44);
+  return btoa(String.fromCharCode(...out));
+}
+
+function securDecrypt(b64, passphrase) {
+  const raw  = Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+  const salt = raw.slice(0,16), iv=raw.slice(16,28), tag=raw.slice(28,44), ct=raw.slice(44);
+  const key  = pbkdf2(passphrase, salt, 100000, 32);
+  const pt   = aesGcmDecrypt(key, iv, ct, tag);
+  return new TextDecoder().decode(pt);
+}
+
+// ---------- State ----------
+
+let records    = [];   // [{text, time}]
+let passphrase = "";
+let unlocked   = false;
+
+// ---------- UI helpers ----------
+
+function show(id) { document.getElementById(id).style.display = "block"; }
+function hide(id) { document.getElementById(id).style.display = "none"; }
+
+function feedback(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = "feedback " + type;
+  el.style.display = "block";
+  if (type === "ok") setTimeout(() => { el.style.display = "none"; }, 4500);
+}
+
+function setStatus(on) {
+  document.getElementById("status-dot").className = "status-dot" + (on ? " active" : "");
+}
+
+// ---------- Auth ----------
+
+function toggleVis() {
+  const inp = document.getElementById("passphrase");
+  inp.type = inp.type === "password" ? "text" : "password";
+}
+
+function updateAuthHint() {
+  document.getElementById("auth-hint").textContent = EMBEDDED_DATA === "__EMBEDDED_DATA__"
+    ? "No existing data — enter a passphrase to start a new journal."
+    : "Existing encrypted data detected. Enter your passphrase to decrypt.";
+}
+
+function unlock() {
+  const pp = document.getElementById("passphrase").value.trim();
+  if (!pp) { feedback("auth-feedback", "Passphrase cannot be empty.", "err"); return; }
+
+  if (EMBEDDED_DATA === "__EMBEDDED_DATA__") {
+    passphrase = pp;
+    records = [];
+    completeUnlock();
+  } else {
+    const btn = document.querySelector("#auth-section .btn-primary");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Working...';
+    setTimeout(() => {
+      try {
+        records = JSON.parse(securDecrypt(EMBEDDED_DATA, pp));
+        passphrase = pp;
+        btn.disabled = false;
+        btn.innerHTML = "&#9654; Unlock";
+        completeUnlock();
+      } catch(e) {
+        btn.disabled = false;
+        btn.innerHTML = "&#9654; Unlock";
+        feedback("auth-feedback", "Decryption failed - incorrect passphrase or corrupted data.", "err");
+      }
+    }, 30);
+  }
+}
+
+function completeUnlock() {
+  unlocked = true;
+  setStatus(true);
+  hide("auth-section");
+  show("records-section");
+  show("entry-section");
+  show("download-section");
+  renderList();
+  updateExportInfo();
+  setTimestamp();
+}
+
+// ---------- Notes list ----------
+
+function renderList() {
+  const list  = document.getElementById("notes-list");
+  const empty = document.getElementById("empty-state");
+  const count = document.getElementById("record-count");
+
+  count.textContent = records.length;
+  list.innerHTML = "";
+
+  if (records.length === 0) {
+    empty.style.display = "block";
+    return;
+  }
+
+  empty.style.display = "none";
+
+  records.forEach((r, i) => {
+    const row = document.createElement("div");
+    row.className = "note-row";
+    row.innerHTML = `
+      <div class="note-index">${i + 1}</div>
+      <div class="note-body">
+        <div class="note-text">${escHtml(r.text)}</div>
+        <div class="note-time">${escHtml(r.time)}</div>
+      </div>
+      <div class="note-actions">
+        <button class="btn btn-danger" onclick="deleteRecord(${i})">&#10005;</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  updateExportInfo();
+}
+
+function deleteRecord(i) {
+  if (!confirm("Delete this note?")) return;
+  records.splice(i, 1);
+  renderList();
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ---------- Entry ----------
+
+function setTimestamp() {
+  document.getElementById("entry-time").value =
+    new Date().toISOString().replace("T"," ").slice(0,19) + " UTC";
+}
+
+function clearForm() {
+  document.getElementById("note-text").value = "";
+  setTimestamp();
+  document.getElementById("note-text").focus();
+}
+
+function addEntry() {
+  const text = document.getElementById("note-text").value.trim();
+  const time = document.getElementById("entry-time").value;
+
+  if (!text) { feedback("entry-feedback", "Note cannot be empty.", "err"); return; }
+
+  records.push({ text, time });
+  renderList();
+  clearForm();
+  feedback("entry-feedback", `Note #${records.length} added.`, "ok");
+}
+
+// ---------- Export / Clone ----------
+
+function cloneTimestamp() {
+  const n = new Date(), p = x => String(x).padStart(2,'0');
+  return `${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())}_${p(n.getHours())}${p(n.getMinutes())}`;
+}
+
+function updateExportInfo() {
+  const el = document.getElementById("export-info");
+  const now = new Date().toISOString().replace("T"," ").slice(0,19) + " UTC";
+  const ver = (FILE_VERSION === "__FILE_VERSION__") ? 1 : (parseInt(FILE_VERSION,10) || 1);
+  el.innerHTML = `
+    <span class="info-key">Notes:</span><span class="info-val">${records.length}</span>
+    <span class="info-key">This file:</span><span class="info-val">v${ver}</span>
+    <span class="info-key">Next clone:</span><span class="info-val">v${ver + 1}</span>
+    <span class="info-key">Encryption:</span><span class="info-val">AES-GCM 256-bit / PBKDF2 310k rounds</span>
+    <span class="info-key">As of:</span><span class="info-val">${now}</span>
+  `;
+}
+
+function downloadClone() {
+  if (records.length === 0) {
+    feedback("dl-feedback", "No notes to export. Use 'Download Fresh Clone' for a blank copy.", "err"); return;
+  }
+  const encBtn = document.querySelector('#download-section .btn-primary');
+  if (encBtn) { encBtn.disabled = true; encBtn.innerHTML = '<span class="spinner"></span> Encrypting...'; }
+  setTimeout(() => {
+    try {
+      const encryptedPayload = securEncrypt(JSON.stringify(records), passphrase);
+      const ver = (FILE_VERSION === "__FILE_VERSION__") ? 1 : (parseInt(FILE_VERSION,10) || 1);
+      const nextVer = String(ver + 1);
+      let src = PRISTINE_SOURCE;
+      src = src.replace(/const EMBEDDED_DATA = ".*?";/, `const EMBEDDED_DATA = "${encryptedPayload}";`);
+      src = src.replace(/const FILE_VERSION\s*=\s*".*?";/, `const FILE_VERSION  = "${nextVer}";`);
+      triggerDownload(src, `securenotes-v${nextVer}-${cloneTimestamp()}.htm`);
+      feedback("dl-feedback", `Encrypted clone v${nextVer} downloaded.`, "ok");
+    } catch(e) {
+      feedback("dl-feedback", "Export failed: " + e.message, "err");
+    }
+    if (encBtn) { encBtn.disabled = false; encBtn.innerHTML = "&#8659; Download Encrypted Clone"; }
+  }, 30);
+}
+
+function downloadFreshClone() {
+  let src = PRISTINE_SOURCE;
+  src = src.replace(/const EMBEDDED_DATA = ".*?";/, `const EMBEDDED_DATA = "__EMBEDDED_DATA__";`);
+  src = src.replace(/const FILE_VERSION\s*=\s*".*?";/, `const FILE_VERSION  = "__FILE_VERSION__";`);
+  triggerDownload(src, `securenotes-FRESH-${cloneTimestamp()}.htm`);
+  feedback("dl-feedback", "Fresh blank clone downloaded.", "ok");
+}
+
+function resetJournal() {
+  if (records.length === 0 && !confirm("No notes to clear. Reset passphrase anyway?")) return;
+  if (records.length > 0 && !confirm(`Permanently erase all ${records.length} note(s) from memory?`)) return;
+  const newPP = document.getElementById("new-passphrase").value.trim();
+  if (newPP) passphrase = newPP;
+  records = [];
+  renderList();
+  updateExportInfo();
+  document.getElementById("new-passphrase").value = "";
+  feedback("dl-feedback", newPP
+    ? "Journal wiped and passphrase updated. Download a Fresh Clone to save."
+    : "Journal wiped. Download a Fresh Clone to save.", "ok");
+}
+
+function triggerDownload(source, filename) {
+  const blob = new Blob([source], { type:"text/html;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------- Init ----------
+
+document.getElementById("passphrase").addEventListener("keydown", e => {
+  if (e.key === "Enter") unlock();
+});
+
+document.getElementById("note-text") && document.getElementById("note-text").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addEntry();
+});
+
+(function() {
+  const ver = (FILE_VERSION === "__FILE_VERSION__") ? 1 : (parseInt(FILE_VERSION,10) || 1);
+  const label = `v${ver}`;
+  const vd = document.getElementById("version-display");
+  const fv = document.getElementById("footer-version");
+  if (vd) vd.textContent = label;
+  if (fv) fv.textContent = label;
+})();
+
+updateAuthHint();
+setTimestamp();
+setInterval(setTimestamp, 30000);
+</script>
+</body>
+</html>

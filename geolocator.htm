@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GeoLocator</title>
+<style>
+  :root {
+    --bg:       #060810;
+    --surface:  #0d1017;
+    --surface2: #141820;
+    --border:   #1e2535;
+    --accent:   #39ff9a;
+    --accent2:  #00b8ff;
+    --warn:     #ffaa00;
+    --danger:   #ff3355;
+    --text:     #b8cce0;
+    --dim:      #445566;
+    --bright:   #e8f4ff;
+    --mono:     'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* subtle grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(57,255,154,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,255,154,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 520px;
+    padding: 1.5rem 1.25rem 0.75rem;
+    display: flex; align-items: center; gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-size: 1.2rem; font-weight: bold;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .logo-sub { font-size: 0.6rem; color: var(--dim); letter-spacing: 0.15em; margin-top: 2px; }
+
+  .gps-indicator {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.6rem; letter-spacing: 0.1em; color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  .gps-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--dim);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .gps-dot.acquiring { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: blink 1s infinite; }
+  .gps-dot.locked    { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 2s infinite; }
+  .gps-dot.error     { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+  @keyframes blink  { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spin   { to{transform:rotate(360deg)} }
+  @keyframes compassSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+  main {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 520px;
+    padding: 1rem 1.25rem 2rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+
+  /* ---- LIVE POSITION CARD ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    animation: fadeUp 0.4s ease forwards;
+  }
+
+  .card-head {
+    padding: 0.5rem 0.9rem;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.6rem; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--dim);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .card-head::before { content: '▸'; color: var(--accent); font-size: 0.55rem; }
+
+  .card-body { padding: 1rem; }
+
+  /* Big coord display */
+  .coord-display {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0.6rem; margin-bottom: 0.75rem;
+  }
+
+  .coord-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .coord-box-label {
+    font-size: 0.55rem; letter-spacing: 0.15em;
+    color: var(--dim); text-transform: uppercase; margin-bottom: 0.2rem;
+  }
+
+  .coord-box-value {
+    font-size: 1.05rem; color: var(--accent);
+    letter-spacing: 0.03em;
+    transition: color 0.3s;
+  }
+
+  .coord-box-value.updating { color: var(--accent2); }
+  .coord-box-value.empty { color: var(--dim); }
+
+  .meta-row {
+    display: flex; gap: 0.6rem; margin-bottom: 0.8rem;
+  }
+
+  .meta-box {
+    flex: 1; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+  }
+  .meta-box-label { font-size: 0.5rem; letter-spacing: 0.12em; color: var(--dim); text-transform: uppercase; }
+  .meta-box-value { font-size: 0.8rem; color: var(--bright); margin-top: 0.1rem; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 0.4rem; padding: 0.6rem 1rem;
+    border: 1px solid; border-radius: 4px;
+    font-family: var(--mono); font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; background: transparent;
+    transition: all 0.2s; user-select: none;
+    -webkit-user-select: none;
+  }
+  .btn-green  { border-color: var(--accent);  color: var(--accent); }
+  .btn-green:active, .btn-green.active { background: var(--accent); color: var(--bg); box-shadow: 0 0 20px rgba(57,255,154,0.4); }
+  .btn-blue   { border-color: var(--accent2); color: var(--accent2); }
+  .btn-blue:active  { background: var(--accent2); color: var(--bg); }
+  .btn-red    { border-color: var(--danger);  color: var(--danger); font-size: 0.6rem; padding: 0.4rem 0.6rem; }
+  .btn-red:active   { background: var(--danger);  color: var(--bg); }
+  .btn:disabled { opacity: 0.3; cursor: default; }
+
+  .btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+  .spinner-icon {
+    width: 11px; height: 11px;
+    border: 2px solid currentColor; border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+
+  /* Status bar */
+  .status-bar {
+    font-size: 0.65rem; color: var(--dim);
+    margin-top: 0.6rem; min-height: 1.1em;
+    transition: color 0.3s;
+  }
+  .status-bar.ok  { color: var(--accent); }
+  .status-bar.err { color: var(--danger); }
+  .status-bar.warn { color: var(--warn); }
+
+  /* ---- TARGET CARD ---- */
+
+  label {
+    display: block; font-size: 0.6rem;
+    letter-spacing: 0.15em; color: var(--dim);
+    text-transform: uppercase; margin-bottom: 0.35rem;
+  }
+
+  input[type="text"], input[type="number"] {
+    width: 100%;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0.55rem 0.75rem;
+    color: var(--bright); font-family: var(--mono);
+    font-size: 0.9rem; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none;
+  }
+  input:focus { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,184,255,0.1); }
+
+  .input-row { display: flex; gap: 0.6rem; margin-bottom: 0.75rem; }
+  .input-row .col { flex: 1; }
+
+  /* ---- NAVIGATION DISPLAY ---- */
+
+  #nav-card { display: none; }
+
+  .nav-inner {
+    display: flex; align-items: center; gap: 1.25rem;
+  }
+
+  /* Compass */
+  .compass-wrap {
+    flex-shrink: 0;
+    position: relative; width: 110px; height: 110px;
+  }
+
+  .compass-wrap svg { width: 110px; height: 110px; }
+
+  /* Distance / bearing stats */
+  .nav-stats { flex: 1; }
+
+  .nav-stat { margin-bottom: 0.6rem; }
+  .nav-stat-label { font-size: 0.55rem; letter-spacing: 0.15em; color: var(--dim); text-transform: uppercase; }
+  .nav-stat-value { font-size: 1.4rem; color: var(--bright); line-height: 1.1; }
+  .nav-stat-value .unit { font-size: 0.65rem; color: var(--dim); margin-left: 0.3rem; }
+  .nav-stat-value .dir  { font-size: 0.8rem; color: var(--accent); margin-left: 0.4rem; }
+
+  .nav-target-label {
+    margin-top: 0.75rem; padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.65rem; color: var(--dim); line-height: 1.5;
+  }
+
+  .nav-target-label .tcoord { color: var(--accent2); }
+
+  /* Update flash */
+  @keyframes flash { 0%{opacity:0.4} 100%{opacity:1} }
+  .flash { animation: flash 0.3s ease; }
+
+  footer {
+    position: relative; z-index: 1;
+    margin-top: auto; padding: 1.2rem;
+    text-align: center; font-size: 0.55rem;
+    color: var(--dim); letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">GeoLocator</div>
+    <div class="logo-sub">// standalone navigator</div>
+  </div>
+  <div class="gps-indicator">
+    <div class="gps-dot" id="gps-dot"></div>
+    <span id="gps-label">offline</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- LIVE POSITION -->
+  <div class="card" id="pos-card">
+    <div class="card-head">Current Position</div>
+    <div class="card-body">
+      <div class="coord-display">
+        <div class="coord-box">
+          <div class="coord-box-label">Latitude</div>
+          <div class="coord-box-value empty" id="disp-lat">—</div>
+        </div>
+        <div class="coord-box">
+          <div class="coord-box-label">Longitude</div>
+          <div class="coord-box-value empty" id="disp-lon">—</div>
+        </div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-box">
+          <div class="meta-box-label">Accuracy</div>
+          <div class="meta-box-value" id="disp-acc">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-box-label">Altitude</div>
+          <div class="meta-box-value" id="disp-alt">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-box-label">Updated</div>
+          <div class="meta-box-value" id="disp-time">—</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" id="watch-btn" onclick="toggleWatch()">&#9654; Start GPS</button>
+        <button class="btn btn-blue"  id="snap-btn"  onclick="snapOnce()" disabled>&#9633; Snap</button>
+        <button class="btn btn-blue"  id="copy-btn"  onclick="copyCoords()" disabled>&#10064; Copy</button>
+      </div>
+      <div class="status-bar" id="pos-status">Press Start GPS to begin.</div>
+    </div>
+  </div>
+
+  <!-- TARGET ENTRY -->
+  <div class="card" style="animation-delay:0.1s">
+    <div class="card-head">Navigate to Target</div>
+    <div class="card-body">
+      <div class="input-row">
+        <div class="col">
+          <label for="tgt-lat">Target Latitude</label>
+          <input type="number" id="tgt-lat" placeholder="-35.280900" step="any"
+                 inputmode="decimal" onchange="targetChanged()" oninput="targetChanged()" />
+        </div>
+        <div class="col">
+          <label for="tgt-lon">Target Longitude</label>
+          <input type="number" id="tgt-lon" placeholder="149.130005" step="any"
+                 inputmode="decimal" onchange="targetChanged()" oninput="targetChanged()" />
+        </div>
+      </div>
+      <div style="margin-bottom:0.75rem">
+        <label for="tgt-name">Label <span style="color:var(--dim);font-size:0.55rem">(optional)</span></label>
+        <input type="text" id="tgt-name" placeholder="e.g. Base camp, waypoint A…" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="setTarget()">&#9654; Set Target</button>
+        <button class="btn btn-red"   onclick="clearTarget()">&#10005; Clear</button>
+      </div>
+      <div class="status-bar" id="tgt-status"></div>
+    </div>
+  </div>
+
+  <!-- NAVIGATION -->
+  <div class="card" id="nav-card" style="animation-delay:0.2s">
+    <div class="card-head">Navigation</div>
+    <div class="card-body">
+      <div class="nav-inner">
+
+        <!-- Compass SVG -->
+        <div class="compass-wrap">
+          <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+            <!-- Outer ring -->
+            <circle cx="55" cy="55" r="52" fill="none" stroke="#1e2535" stroke-width="1.5"/>
+            <!-- Degree ticks -->
+            <g id="ticks"></g>
+            <!-- Cardinal labels -->
+            <text x="55"  y="14"  text-anchor="middle" fill="#445566" font-size="8" font-family="monospace">N</text>
+            <text x="55"  y="102" text-anchor="middle" fill="#445566" font-size="8" font-family="monospace">S</text>
+            <text x="10"  y="58"  text-anchor="middle" fill="#445566" font-size="8" font-family="monospace">W</text>
+            <text x="100" y="58"  text-anchor="middle" fill="#445566" font-size="8" font-family="monospace">E</text>
+            <!-- Inner ring -->
+            <circle cx="55" cy="55" r="36" fill="none" stroke="#1e2535" stroke-width="1"/>
+            <!-- Arrow group (rotates to bearing) -->
+            <g id="nav-arrow" transform="rotate(0,55,55)">
+              <!-- North triangle (green) -->
+              <polygon points="55,14 59,55 55,62 51,55" fill="#39ff9a" opacity="0.9"/>
+              <!-- South triangle (dim) -->
+              <polygon points="55,62 59,55 55,96 51,55" fill="#1e2535"/>
+              <!-- Center dot -->
+              <circle cx="55" cy="55" r="4" fill="#060810" stroke="#39ff9a" stroke-width="1.5"/>
+            </g>
+            <!-- Accuracy arc (hidden until we have data) -->
+            <circle cx="55" cy="55" r="36" fill="none"
+                    stroke="#39ff9a" stroke-width="1.5"
+                    stroke-dasharray="0 226"
+                    opacity="0.25" id="acc-arc"/>
+          </svg>
+        </div>
+
+        <!-- Stats -->
+        <div class="nav-stats">
+          <div class="nav-stat">
+            <div class="nav-stat-label">Distance</div>
+            <div class="nav-stat-value" id="nav-dist">—</div>
+          </div>
+          <div class="nav-stat">
+            <div class="nav-stat-label">Bearing</div>
+            <div class="nav-stat-value" id="nav-bearing">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-target-label" id="nav-target-label">—</div>
+      <div class="status-bar" id="nav-status" style="margin-top:0.5rem"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>GeoLocator &nbsp;·&nbsp; Standalone &nbsp;·&nbsp; No external dependencies &nbsp;·&nbsp; No data sent anywhere</footer>
+
+<script>
+// ---- State ----
+let watchId     = null;
+let watching    = false;
+let livePos     = null;   // {lat, lon, acc, alt, time}
+let target      = null;   // {lat, lon, name}
+
+// ---- Draw compass ticks ----
+(function drawTicks() {
+  const g = document.getElementById('ticks');
+  for (let i = 0; i < 360; i += 5) {
+    const rad = (i - 90) * Math.PI / 180;
+    const major = i % 45 === 0;
+    const r1 = major ? 44 : 47;
+    const r2 = 52;
+    const x1 = 55 + r1 * Math.cos(rad);
+    const y1 = 55 + r1 * Math.sin(rad);
+    const x2 = 55 + r2 * Math.cos(rad);
+    const y2 = 55 + r2 * Math.sin(rad);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', x1.toFixed(2));
+    line.setAttribute('y1', y1.toFixed(2));
+    line.setAttribute('x2', x2.toFixed(2));
+    line.setAttribute('y2', y2.toFixed(2));
+    line.setAttribute('stroke', major ? '#2e3a4e' : '#1a2230');
+    line.setAttribute('stroke-width', major ? '1.5' : '0.75');
+    g.appendChild(line);
+  }
+})();
+
+// ---- GPS ----
+function toggleWatch() {
+  if (watching) stopWatch(); else startWatch();
+}
+
+function startWatch() {
+  if (!navigator.geolocation) {
+    setStatus('pos-status', 'Geolocation not supported by this browser.', 'err'); return;
+  }
+  watching = true;
+  setGpsDot('acquiring'); setGpsLabel('acquiring');
+  setStatus('pos-status', 'Requesting position…', 'warn');
+  const btn = document.getElementById('watch-btn');
+  btn.innerHTML = '&#9646;&#9646; Stop GPS';
+  btn.classList.add('active');
+  document.getElementById('snap-btn').disabled = false;
+
+  watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    onPositionError,
+    { enableHighAccuracy: true, maximumAge: 1500, timeout: 20000 }
+  );
+}
+
+function stopWatch() {
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  watching = false;
+  setGpsDot(''); setGpsLabel('offline');
+  const btn = document.getElementById('watch-btn');
+  btn.innerHTML = '&#9654; Start GPS';
+  btn.classList.remove('active');
+  document.getElementById('snap-btn').disabled = true;
+  setStatus('pos-status', 'GPS stopped.', '');
+}
+
+function onPosition(pos) {
+  const c = pos.coords;
+  livePos = {
+    lat:  c.latitude,
+    lon:  c.longitude,
+    acc:  Math.round(c.accuracy),
+    alt:  c.altitude !== null ? Math.round(c.altitude) + 'm' : '—',
+    time: new Date().toTimeString().slice(0,8)
+  };
+
+  setGpsDot('locked'); setGpsLabel('locked');
+
+  const latEl = document.getElementById('disp-lat');
+  const lonEl = document.getElementById('disp-lon');
+  [latEl, lonEl].forEach(el => { el.classList.remove('empty'); el.classList.add('updating'); });
+  setTimeout(() => [latEl, lonEl].forEach(el => el.classList.remove('updating')), 300);
+
+  latEl.textContent = livePos.lat.toFixed(6);
+  lonEl.textContent = livePos.lon.toFixed(6);
+  document.getElementById('disp-acc').textContent  = `±${livePos.acc}m`;
+  document.getElementById('disp-alt').textContent  = livePos.alt;
+  document.getElementById('disp-time').textContent = livePos.time;
+  document.getElementById('copy-btn').disabled = false;
+
+  const acc = livePos.acc;
+  setStatus('pos-status', `✓ Fix — ±${acc}m accuracy`, acc < 20 ? 'ok' : acc < 100 ? 'warn' : 'err');
+
+  if (target) updateNav();
+}
+
+function onPositionError(err) {
+  const msgs = {
+    1: 'Permission denied — allow location access and retry.',
+    2: 'Position unavailable — no GPS signal.',
+    3: 'Timeout — retrying…'
+  };
+  setGpsDot('error'); setGpsLabel('error');
+  setStatus('pos-status', msgs[err.code] || 'GPS error.', 'err');
+}
+
+function snapOnce() {
+  if (!navigator.geolocation) return;
+  setStatus('pos-status', 'Taking single fix…', 'warn');
+  navigator.geolocation.getCurrentPosition(onPosition, onPositionError,
+    { enableHighAccuracy: true, timeout: 15000 });
+}
+
+function copyCoords() {
+  if (!livePos) return;
+  const txt = `${livePos.lat.toFixed(6)}, ${livePos.lon.toFixed(6)}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => {
+      setStatus('pos-status', `Copied: ${txt}`, 'ok');
+    }).catch(() => fallbackCopy(txt));
+  } else {
+    fallbackCopy(txt);
+  }
+}
+
+function fallbackCopy(txt) {
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); setStatus('pos-status', `Copied: ${txt}`, 'ok'); }
+  catch(e) { setStatus('pos-status', `Copy failed — coords: ${txt}`, 'warn'); }
+  document.body.removeChild(ta);
+}
+
+// ---- Target ----
+function targetChanged() {
+  // live-clear nav if target fields edited while nav showing
+  const lat = parseFloat(document.getElementById('tgt-lat').value);
+  const lon = parseFloat(document.getElementById('tgt-lon').value);
+  if (isNaN(lat) || isNaN(lon)) {
+    document.getElementById('nav-card').style.display = 'none';
+    target = null;
+  }
+}
+
+function setTarget() {
+  const lat  = parseFloat(document.getElementById('tgt-lat').value);
+  const lon  = parseFloat(document.getElementById('tgt-lon').value);
+  const name = document.getElementById('tgt-name').value.trim();
+
+  if (isNaN(lat) || isNaN(lon)) {
+    setStatus('tgt-status', 'Enter valid numeric latitude and longitude.', 'err'); return;
+  }
+  if (lat < -90 || lat > 90) {
+    setStatus('tgt-status', 'Latitude must be between -90 and 90.', 'err'); return;
+  }
+  if (lon < -180 || lon > 180) {
+    setStatus('tgt-status', 'Longitude must be between -180 and 180.', 'err'); return;
+  }
+
+  target = { lat, lon, name: name || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  document.getElementById('nav-card').style.display = 'block';
+  setStatus('tgt-status', `Target set: ${target.name}`, 'ok');
+
+  // Update nav label
+  document.getElementById('nav-target-label').innerHTML =
+    `<span style="color:var(--dim)">Target: </span>` +
+    `<span style="color:var(--bright)">${escHtml(target.name)}</span>` +
+    (name ? `<br><span class="tcoord">${lat.toFixed(6)}, ${lon.toFixed(6)}</span>` : '');
+
+  if (livePos) updateNav();
+  else setStatus('nav-status', 'Start GPS to get distance and bearing.', 'warn');
+}
+
+function clearTarget() {
+  target = null;
+  document.getElementById('tgt-lat').value = '';
+  document.getElementById('tgt-lon').value = '';
+  document.getElementById('tgt-name').value = '';
+  document.getElementById('nav-card').style.display = 'none';
+  setStatus('tgt-status', '');
+}
+
+// ---- Navigation math ----
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = d => d * Math.PI / 180;
+  const dLat = r(lat2 - lat1), dLon = r(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function bearing(lat1, lon1, lat2, lon2) {
+  const r = d => d * Math.PI / 180;
+  const dLon = r(lon2 - lon1);
+  const y = Math.sin(dLon) * Math.cos(r(lat2));
+  const x = Math.cos(r(lat1)) * Math.sin(r(lat2)) -
+            Math.sin(r(lat1)) * Math.cos(r(lat2)) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function bearingLabel(deg) {
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+          'S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(deg/22.5) % 16];
+}
+
+function formatDist(m) {
+  if (m >= 100000) return [(m/1000).toFixed(0), 'km'];
+  if (m >= 10000)  return [(m/1000).toFixed(1), 'km'];
+  if (m >= 1000)   return [(m/1000).toFixed(2), 'km'];
+  return [Math.round(m).toString(), 'm'];
+}
+
+function updateNav() {
+  if (!livePos || !target) return;
+
+  const dist   = haversine(livePos.lat, livePos.lon, target.lat, target.lon);
+  const brng   = bearing(livePos.lat, livePos.lon, target.lat, target.lon);
+  const lbl    = bearingLabel(brng);
+  const [dv, du] = formatDist(dist);
+
+  // Update compass arrow
+  document.getElementById('nav-arrow').setAttribute('transform', `rotate(${brng.toFixed(1)},55,55)`);
+
+  // Animate accuracy arc: show proportion of circle based on accuracy vs distance
+  // (purely visual — smaller ratio = better)
+  const arc = document.getElementById('acc-arc');
+  const circumference = 2 * Math.PI * 36; // ~226
+  const ratio = Math.min(1, livePos.acc / Math.max(1, dist));
+  arc.setAttribute('stroke-dasharray', `${(ratio * circumference).toFixed(1)} ${circumference.toFixed(1)}`);
+
+  // Update distance display
+  const distEl = document.getElementById('nav-dist');
+  distEl.innerHTML = `${dv}<span class="unit">${du}</span><span class="dir">${lbl}</span>`;
+  distEl.classList.add('flash');
+  setTimeout(() => distEl.classList.remove('flash'), 300);
+
+  // Update bearing display
+  document.getElementById('nav-bearing').innerHTML =
+    `${Math.round(brng)}<span class="unit">°</span><span class="dir">${lbl}</span>`;
+
+  // Status
+  const within = dist < livePos.acc * 2;
+  if (within) {
+    setStatus('nav-status', `You may be within range — accuracy ±${livePos.acc}m, distance ≈${Math.round(dist)}m`, 'warn');
+  } else {
+    setStatus('nav-status', `Updated ${livePos.time}  ·  GPS accuracy ±${livePos.acc}m`, 'ok');
+  }
+}
+
+// ---- UI helpers ----
+function setGpsDot(state) {
+  document.getElementById('gps-dot').className = 'gps-dot' + (state ? ' ' + state : '');
+}
+function setGpsLabel(txt) {
+  document.getElementById('gps-label').textContent = txt;
+}
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status-bar' + (type ? ' ' + type : '');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
