@@ -2,6 +2,8 @@
 
 A small collection of self-contained, offline-first HTML tools for encrypted field logging and GPS navigation. No server, no accounts, no external dependencies — just single `.htm` files you can carry, email, or host anywhere.
 
+![Screenshot](https://harrishudson.com/github/selfkept_snapshot1.jpg)
+
 ---
 
 ## Tools
